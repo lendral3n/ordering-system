@@ -1,31 +1,32 @@
-
-// internal/models/media.go
 package models
 
 import (
 	"time"
+
+	"gorm.io/gorm"
 )
 
-type MediaFileType string
-
-const (
-	MediaFileTypeImage    MediaFileType = "image"
-	MediaFileTypeVideo    MediaFileType = "video"
-	MediaFileTypeImage360 MediaFileType = "image_360"
-)
-
+// MediaFile model
 type MediaFile struct {
-	ID           int           `json:"id" db:"id"`
-	FileType     MediaFileType `json:"file_type" db:"file_type"`
-	FileURL      string        `json:"file_url" db:"file_url"`
-	ThumbnailURL *string       `json:"thumbnail_url" db:"thumbnail_url"`
-	FileSize     int64         `json:"file_size" db:"file_size"`
-	MimeType     string        `json:"mime_type" db:"mime_type"`
-	MenuItemID   *int          `json:"menu_item_id" db:"menu_item_id"`
-	UploadedBy   int           `json:"uploaded_by" db:"uploaded_by"`
-	CreatedAt    time.Time     `json:"created_at" db:"created_at"`
+	ID           uint           `gorm:"primaryKey" json:"id"`
+	FileType     string         `gorm:"not null" json:"file_type"` // image, video, image_360
+	FileURL      string         `gorm:"not null" json:"file_url"`
+	PublicID     string         `json:"public_id"` // Cloudinary public ID
+	ThumbnailURL *string        `json:"thumbnail_url"`
+	FileSize     int64          `json:"file_size"`
+	MimeType     string         `json:"mime_type"`
+	MenuItemID   *uint          `json:"menu_item_id"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
 	
 	// Relations
-	MenuItem *MenuItem `json:"menu_item,omitempty"`
-	Staff    *Staff    `json:"staff,omitempty"`
+	MenuItem *MenuItem `gorm:"foreignKey:MenuItemID" json:"menu_item,omitempty"`
 }
+
+// Media file type constants
+const (
+	MediaFileTypeImage    = "image"
+	MediaFileTypeVideo    = "video"
+	MediaFileTypeImage360 = "image_360"
+)

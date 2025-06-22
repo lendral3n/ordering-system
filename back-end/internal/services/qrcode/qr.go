@@ -1,4 +1,3 @@
-// internal/services/qrcode/generator.go
 package qrcode
 
 import (
@@ -9,17 +8,17 @@ import (
 	qr "github.com/skip2/go-qrcode"
 )
 
-type Service struct {
+type QRService struct {
 	baseURL string
 }
 
-func NewService(baseURL string) *Service {
-	return &Service{
+func NewService(baseURL string) *QRService {
+	return &QRService{
 		baseURL: baseURL,
 	}
 }
 
-func (s *Service) GenerateTableQRCode(tableNumber string) ([]byte, error) {
+func (s *QRService) GenerateTableQRCode(tableNumber string) ([]byte, error) {
 	// Create URL for scanning
 	scanURL := fmt.Sprintf("%s/scan?table=%s", s.baseURL, url.QueryEscape(tableNumber))
 
@@ -32,7 +31,7 @@ func (s *Service) GenerateTableQRCode(tableNumber string) ([]byte, error) {
 	return qrCode, nil
 }
 
-func (s *Service) GenerateTableQRCodeBase64(tableNumber string) (string, error) {
+func (s *QRService) GenerateTableQRCodeBase64(tableNumber string) (string, error) {
 	qrCode, err := s.GenerateTableQRCode(tableNumber)
 	if err != nil {
 		return "", err

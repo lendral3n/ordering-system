@@ -1,79 +1,37 @@
 package database
 
 import (
-	"database/sql"
 	"fmt"
-	"time"
+	"log"
 
-	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
-	_ "github.com/lib/pq"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
-type DB struct {
-	*sql.DB
-}
-
-func Connect(databaseURL string) (*DB, error) {
-	db, err := sql.Open("postgres", databaseURL)
+func Connect(databaseURL string) (*gorm.DB, error) {
+	db, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-	
+
+	// Get underlying SQL database to configure connection pool
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database instance: %w", err)
+	}
+
 	// Configure connection pool
-	db.SetMaxOpenConns(100)
-	db.SetMaxIdleConns(10)
-	db.SetConnMaxLifetime(time.Hour)
-	
+	sqlDB.SetMaxOpenConns(100)
+	sqlDB.SetMaxIdleConns(10)
+
 	// Test connection
-	if err := db.Ping(); err != nil {
+	if err := sqlDB.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
-	
-	return &DB{db}, nil
-}
 
-func Migrate(db *DB, migrationsPath string) error {
-	driver, err := postgres.WithInstance(db.DB, &postgres.Config{})
-	if err != nil {
-		return fmt.Errorf("failed to create migration driver: %w", err)
-	}
-	
-	m, err := migrate.NewWithDatabaseInstance(
-		fmt.Sprintf("file://%s", migrationsPath),
-		"postgres",
-		driver,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create migration instance: %w", err)
-	}
-	
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("failed to run migrations: %w", err)
-	}
-	
-	return nil
-}
-
-// Transaction executes a function within a database transaction
-func (db *DB) Transaction(fn func(*sql.Tx) error) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	
-	defer func() {
-		if p := recover(); p != nil {
-			tx.Rollback()
-			panic(p)
-		}
-	}()
-	
-	if err := fn(tx); err != nil {
-		tx.Rollback()
-		return err
-	}
-	
-	return tx.Commit()
+	log.Println("Database connected successfully")
+	return db, nil
 }

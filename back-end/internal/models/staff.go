@@ -30,12 +30,12 @@ type Staff struct {
 
 type StaffNotificationType string
 
-const (
-	NotificationNewOrder          StaffNotificationType = "new_order"
-	NotificationPaymentReceived   StaffNotificationType = "payment_received"
-	NotificationOrderReady        StaffNotificationType = "order_ready"
-	NotificationAssistanceRequest StaffNotificationType = "assistance_request"
-)
+// const (
+// 	NotificationNewOrder          StaffNotificationType = "new_order"
+// 	NotificationPaymentReceived   StaffNotificationType = "payment_received"
+// 	NotificationOrderReady        StaffNotificationType = "order_ready"
+// 	NotificationAssistanceRequest StaffNotificationType = "assistance_request"
+// )
 
 type StaffNotification struct {
 	ID        int                   `json:"id" db:"id"`

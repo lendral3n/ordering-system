@@ -8,7 +8,6 @@ import (
 	"lendral3n/ordering-system/internal/database"
 	"lendral3n/ordering-system/internal/models"
 	"lendral3n/ordering-system/internal/repository"
-	"lendral3n/ordering-system/internal/services/auth"
 	"lendral3n/ordering-system/internal/services/qrcode"
 	"log"
 )

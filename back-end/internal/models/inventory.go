@@ -1,21 +1,22 @@
-// internal/models/inventory.go
 package models
 
 import (
 	"time"
+
+	"gorm.io/gorm"
 )
 
+// InventoryLog model
 type InventoryLog struct {
-	ID             int       `json:"id" db:"id"`
-	MenuItemID     int       `json:"menu_item_id" db:"menu_item_id"`
-	QuantityChange int       `json:"quantity_change" db:"quantity_change"`
-	Reason         string    `json:"reason" db:"reason"`
-	OrderItemID    *int      `json:"order_item_id" db:"order_item_id"`
-	StaffID        *int      `json:"staff_id" db:"staff_id"`
-	CreatedAt      time.Time `json:"created_at" db:"created_at"`
-
+	ID             uint           `gorm:"primaryKey" json:"id"`
+	MenuItemID     uint           `gorm:"not null" json:"menu_item_id"`
+	QuantityChange int            `gorm:"not null" json:"quantity_change"`
+	Reason         string         `json:"reason"`
+	OrderItemID    *uint          `json:"order_item_id"`
+	CreatedAt      time.Time      `json:"created_at"`
+	DeletedAt      gorm.DeletedAt `gorm:"index" json:"-"`
+	
 	// Relations
-	MenuItem  *MenuItem  `json:"menu_item,omitempty"`
-	OrderItem *OrderItem `json:"order_item,omitempty"`
-	Staff     *Staff     `json:"staff,omitempty"`
+	MenuItem  MenuItem   `gorm:"foreignKey:MenuItemID" json:"menu_item,omitempty"`
+	OrderItem *OrderItem `gorm:"foreignKey:OrderItemID" json:"order_item,omitempty"`
 }

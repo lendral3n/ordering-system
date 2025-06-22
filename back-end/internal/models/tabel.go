@@ -1,29 +1,26 @@
-// internal/models/table.go
 package models
 
 import (
 	"time"
+
+	"gorm.io/gorm"
 )
 
-type TableStatus string
-
-const (
-	TableStatusAvailable TableStatus = "available"
-	TableStatusOccupied  TableStatus = "occupied"
-	TableStatusReserved  TableStatus = "reserved"
-)
-
+// Table model
 type Table struct {
-	ID          int         `json:"id" db:"id"`
-	TableNumber string      `json:"table_number" db:"table_number"`
-	QRCode      string      `json:"qr_code" db:"qr_code"`
-	Status      TableStatus `json:"status" db:"status"`
-	Capacity    int         `json:"capacity" db:"capacity"`
-	CreatedAt   time.Time   `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time   `json:"updated_at" db:"updated_at"`
+	ID          uint           `gorm:"primaryKey" json:"id"`
+	TableNumber string         `gorm:"uniqueIndex;not null" json:"table_number"`
+	QRCode      string         `gorm:"not null" json:"qr_code"`
+	Status      string         `gorm:"default:'available'" json:"status"` // available, occupied, reserved
+	Capacity    int            `gorm:"not null" json:"capacity"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
-
-
-
-
+// Table status constants
+const (
+	TableStatusAvailable = "available"
+	TableStatusOccupied  = "occupied"
+	TableStatusReserved  = "reserved"
+)

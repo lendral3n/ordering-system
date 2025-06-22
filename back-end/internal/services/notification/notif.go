@@ -1,26 +1,14 @@
-// internal/services/notification/websocket.go
 package notification
 
 import (
 	"encoding/json"
 	"fmt"
-	"lendral3n/ordering-system/internal/models"
-	"lendral3n/ordering-system/internal/repository"
 	"log"
-	"net/http"
 	"sync"
-	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/gofiber/websocket/v2"
+	"lendral3n/ordering-system/internal/models"
 )
-
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-}
 
 type Hub struct {
 	clients    map[*Client]bool
@@ -35,13 +23,12 @@ type Client struct {
 	conn    *websocket.Conn
 	send    chan []byte
 	role    string
-	userID  int
 	tableID int
 }
 
 type Message struct {
 	Type    string      `json:"type"`
-	Target  string      `json:"target"` // "all", "staff", "table:{id}", "user:{id}"
+	Target  string      `json:"target"` // "all", "staff", "table:{id}"
 	Message string      `json:"message"`
 	Data    interface{} `json:"data"`
 }
@@ -62,7 +49,7 @@ func (h *Hub) Run() {
 			h.mu.Lock()
 			h.clients[client] = true
 			h.mu.Unlock()
-			log.Printf("Client connected: role=%s, userID=%d, tableID=%d", client.role, client.userID, client.tableID)
+			log.Printf("Client connected: role=%s, tableID=%d", client.role, client.tableID)
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -70,7 +57,7 @@ func (h *Hub) Run() {
 				delete(h.clients, client)
 				close(client.send)
 				h.mu.Unlock()
-				log.Printf("Client disconnected: role=%s, userID=%d", client.role, client.userID)
+				log.Printf("Client disconnected: role=%s", client.role)
 			} else {
 				h.mu.Unlock()
 			}
@@ -107,52 +94,37 @@ func (h *Hub) shouldSendToClient(client *Client, msg Message) bool {
 	case "customer":
 		return client.role == "customer"
 	default:
-		// Handle specific targets like "table:1" or "user:5"
+		// Handle specific targets like "table:1"
 		if len(msg.Target) > 6 && msg.Target[:6] == "table:" {
 			tableID := 0
 			fmt.Sscanf(msg.Target, "table:%d", &tableID)
 			return client.tableID == tableID
 		}
-		if len(msg.Target) > 5 && msg.Target[:5] == "user:" {
-			userID := 0
-			fmt.Sscanf(msg.Target, "user:%d", &userID)
-			return client.userID == userID
-		}
 	}
 	return false
 }
 
-func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
+func (h *Hub) HandleWebSocket(c *websocket.Conn) {
 	// Get client info from query params
-	role := r.URL.Query().Get("role")
-	userID := 0
-	tableID := 0
+	role := c.Query("role", "customer")
+	tableID := c.Query("table_id", "0")
 
-	if role == "staff" {
-		fmt.Sscanf(r.URL.Query().Get("user_id"), "%d", &userID)
-	} else if role == "customer" {
-		fmt.Sscanf(r.URL.Query().Get("table_id"), "%d", &tableID)
-	}
+	tableIDInt := 0
+	fmt.Sscanf(tableID, "%d", &tableIDInt)
 
 	client := &Client{
 		hub:     h,
-		conn:    conn,
+		conn:    c,
 		send:    make(chan []byte, 256),
 		role:    role,
-		userID:  userID,
-		tableID: tableID,
+		tableID: tableIDInt,
 	}
 
 	client.hub.register <- client
 
+	// Start goroutines
 	go client.writePump()
-	go client.readPump()
+	client.readPump()
 }
 
 func (c *Client) readPump() {
@@ -160,13 +132,6 @@ func (c *Client) readPump() {
 		c.hub.unregister <- c
 		c.conn.Close()
 	}()
-
-	c.conn.SetReadLimit(maxMessageSize)
-	c.conn.SetReadDeadline(time.Now().Add(pongWait))
-	c.conn.SetPongHandler(func(string) error {
-		c.conn.SetReadDeadline(time.Now().Add(pongWait))
-		return nil
-	})
 
 	for {
 		_, _, err := c.conn.ReadMessage()
@@ -180,92 +145,29 @@ func (c *Client) readPump() {
 }
 
 func (c *Client) writePump() {
-	ticker := time.NewTicker(pingPeriod)
-	defer func() {
-		ticker.Stop()
-		c.conn.Close()
-	}()
+	defer c.conn.Close()
 
 	for {
 		select {
 		case message, ok := <-c.send:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
-			w, err := c.conn.NextWriter(websocket.TextMessage)
-			if err != nil {
-				return
-			}
-			w.Write(message)
-
-			// Add queued messages to the current websocket message
-			n := len(c.send)
-			for i := 0; i < n; i++ {
-				w.Write(newline)
-				w.Write(<-c.send)
-			}
-
-			if err := w.Close(); err != nil {
-				return
-			}
-
-		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
 				return
 			}
 		}
 	}
 }
 
-const (
-	writeWait      = 10 * time.Second
-	pongWait       = 60 * time.Second
-	pingPeriod     = (pongWait * 9) / 10
-	maxMessageSize = 512
-)
-
-var (
-	newline = []byte{'\n'}
-	space   = []byte{' '}
-)
-
-// Service for notifications
-type Service struct {
-	hub       *Hub
-	notifRepo repository.NotificationRepository
-}
-
-func NewService(notifRepo repository.NotificationRepository) *Service {
-	return &Service{
-		notifRepo: notifRepo,
-	}
-}
-
-func (s *Service) SetHub(hub *Hub) {
-	s.hub = hub
-}
-
-func (s *Service) NotifyNewOrder(order *models.Order) error {
-	// Create notification in database
-	notif := &models.StaffNotification{
-		OrderID: &order.ID,
-		Type:    models.NotificationNewOrder,
-		Message: fmt.Sprintf("New order #%s from table %s", order.OrderNumber, order.Table.TableNumber),
-	}
-
-	if err := s.notifRepo.Create(notif); err != nil {
-		return err
-	}
-
-	// Send WebSocket notification
+// Broadcast methods
+func (h *Hub) BroadcastNewOrder(order *models.Order) {
 	msg := Message{
 		Type:    "new_order",
 		Target:  "staff",
-		Message: notif.Message,
+		Message: fmt.Sprintf("New order #%s from table %s", order.OrderNumber, order.Table.TableNumber),
 		Data: map[string]interface{}{
 			"order_id":     order.ID,
 			"order_number": order.OrderNumber,
@@ -273,27 +175,15 @@ func (s *Service) NotifyNewOrder(order *models.Order) error {
 			"total":        order.GrandTotal,
 		},
 	}
-
-	return s.broadcast(msg)
+	h.broadcast <- mustMarshal(msg)
 }
 
-func (s *Service) NotifyPaymentReceived(payment *models.Payment, order *models.Order) error {
-	// Create notification in database
-	notif := &models.StaffNotification{
-		OrderID: &order.ID,
-		Type:    models.NotificationPaymentReceived,
-		Message: fmt.Sprintf("Payment received for order #%s", order.OrderNumber),
-	}
-
-	if err := s.notifRepo.Create(notif); err != nil {
-		return err
-	}
-
+func (h *Hub) BroadcastPaymentReceived(payment *models.Payment, order *models.Order) {
 	// Notify staff
 	staffMsg := Message{
 		Type:    "payment_received",
 		Target:  "staff",
-		Message: notif.Message,
+		Message: fmt.Sprintf("Payment received for order #%s", order.OrderNumber),
 		Data: map[string]interface{}{
 			"order_id":     order.ID,
 			"order_number": order.OrderNumber,
@@ -301,10 +191,7 @@ func (s *Service) NotifyPaymentReceived(payment *models.Payment, order *models.O
 			"method":       payment.PaymentType,
 		},
 	}
-
-	if err := s.broadcast(staffMsg); err != nil {
-		return err
-	}
+	h.broadcast <- mustMarshal(staffMsg)
 
 	// Notify customer
 	customerMsg := Message{
@@ -316,12 +203,10 @@ func (s *Service) NotifyPaymentReceived(payment *models.Payment, order *models.O
 			"status":   "paid",
 		},
 	}
-
-	return s.broadcast(customerMsg)
+	h.broadcast <- mustMarshal(customerMsg)
 }
 
-func (s *Service) NotifyOrderStatusUpdate(order *models.Order) error {
-	// Notify customer about status change
+func (h *Hub) BroadcastOrderStatusUpdate(order *models.Order) {
 	msg := Message{
 		Type:    "order_status_updated",
 		Target:  fmt.Sprintf("table:%d", order.TableID),
@@ -334,60 +219,31 @@ func (s *Service) NotifyOrderStatusUpdate(order *models.Order) error {
 
 	// Special notification for ready orders
 	if order.Status == models.OrderStatusReady {
-		// Create staff notification
-		notif := &models.StaffNotification{
-			OrderID: &order.ID,
-			Type:    models.NotificationOrderReady,
-			Message: fmt.Sprintf("Order #%s is ready to serve", order.OrderNumber),
-		}
-
-		if err := s.notifRepo.Create(notif); err != nil {
-			return err
-		}
-
-		// Send special ready notification
 		msg.Type = "order_ready"
 		msg.Message = "Your order is ready!"
 	}
 
-	return s.broadcast(msg)
+	h.broadcast <- mustMarshal(msg)
 }
 
-func (s *Service) NotifyAssistanceRequest(tableID int, tableNumber string) error {
-	// Create notification
-	notif := &models.StaffNotification{
-		Type:    models.NotificationAssistanceRequest,
-		Message: fmt.Sprintf("Table %s needs assistance", tableNumber),
-	}
-
-	if err := s.notifRepo.Create(notif); err != nil {
-		return err
-	}
-
-	// Send WebSocket notification to staff
+func (h *Hub) BroadcastAssistanceRequest(tableID uint, tableNumber string) {
 	msg := Message{
 		Type:    "assistance_request",
 		Target:  "staff",
-		Message: notif.Message,
+		Message: fmt.Sprintf("Table %s needs assistance", tableNumber),
 		Data: map[string]interface{}{
 			"table_id":     tableID,
 			"table_number": tableNumber,
 		},
 	}
-
-	return s.broadcast(msg)
+	h.broadcast <- mustMarshal(msg)
 }
 
-func (s *Service) broadcast(msg Message) error {
-	if s.hub == nil {
-		return fmt.Errorf("WebSocket hub not initialized")
-	}
-
-	data, err := json.Marshal(msg)
+func mustMarshal(v interface{}) []byte {
+	data, err := json.Marshal(v)
 	if err != nil {
-		return err
+		log.Printf("Error marshaling message: %v", err)
+		return []byte{}
 	}
-
-	s.hub.broadcast <- data
-	return nil
+	return data
 }

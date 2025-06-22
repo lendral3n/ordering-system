@@ -6,8 +6,6 @@
 *.dll
 *.so
 *.dylib
-/main
-/lendral3n/ordering-system
 
 # Test binary
 *.test
@@ -37,17 +35,9 @@ vendor/
 .DS_Store
 Thumbs.db
 
-# Uploads
-uploads/
-media/
-
 # Logs
 *.log
 logs/
-
-# Database
-*.db
-*.sqlite
 
 # Temporary files
 tmp/

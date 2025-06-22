@@ -1,0 +1,54 @@
+
+# .gitignore
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/main
+/lendral3n/ordering-system
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace file
+go.work
+
+# Dependency directories
+vendor/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Uploads
+uploads/
+media/
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+
+# Temporary files
+tmp/
+temp/

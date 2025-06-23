@@ -1,15 +1,15 @@
-// scripts/seed.go
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"lendral3n/ordering-system/internal/config"
 	"lendral3n/ordering-system/internal/database"
 	"lendral3n/ordering-system/internal/models"
-	"lendral3n/ordering-system/internal/repository"
 	"lendral3n/ordering-system/internal/services/qrcode"
 	"log"
+
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -24,36 +24,36 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
-	defer db.Close()
+
+	// Get underlying SQL database
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatal("Failed to get database instance:", err)
+	}
+	defer sqlDB.Close()
 
 	// Initialize services
-	authService := auth.NewService(cfg.JWTSecret, cfg.JWTExpiry)
 	qrService := qrcode.NewService(cfg.BaseURL)
 
-	// Initialize repositories
-	staffRepo := repository.NewStaffRepository(db)
-	tableRepo := repository.NewTableRepository(db)
-	menuRepo := repository.NewMenuRepository(db)
-
 	// Seed staff users
-	if err := seedStaff(staffRepo, authService); err != nil {
+	if err := seedStaff(db); err != nil {
 		log.Fatal("Failed to seed staff:", err)
 	}
 
 	// Seed tables with QR codes
-	if err := seedTables(tableRepo, qrService); err != nil {
+	if err := seedTables(db, qrService); err != nil {
 		log.Fatal("Failed to seed tables:", err)
 	}
 
 	// Seed menu categories and items
-	if err := seedMenu(menuRepo); err != nil {
+	if err := seedMenu(db); err != nil {
 		log.Fatal("Failed to seed menu:", err)
 	}
 
 	log.Println("Database seeding completed successfully!")
 }
 
-func seedStaff(repo repository.StaffRepository, authService *auth.Service) error {
+func seedStaff(db *gorm.DB) error {
 	log.Println("Seeding staff users...")
 
 	staffMembers := []struct {
@@ -61,62 +61,62 @@ func seedStaff(repo repository.StaffRepository, authService *auth.Service) error
 		Email    string
 		Password string
 		FullName string
-		Role     models.StaffRole
+		Role     string
 	}{
 		{
 			Username: "admin",
 			Email:    "admin@restaurant.com",
 			Password: "admin123",
 			FullName: "System Administrator",
-			Role:     models.StaffRoleAdmin,
+			Role:     "admin",
 		},
 		{
 			Username: "cashier1",
 			Email:    "cashier1@restaurant.com",
 			Password: "cashier123",
 			FullName: "John Cashier",
-			Role:     models.StaffRoleCashier,
+			Role:     "cashier",
 		},
 		{
 			Username: "waiter1",
 			Email:    "waiter1@restaurant.com",
 			Password: "waiter123",
 			FullName: "Jane Waiter",
-			Role:     models.StaffRoleWaiter,
+			Role:     "waiter",
 		},
 		{
 			Username: "kitchen1",
 			Email:    "kitchen1@restaurant.com",
 			Password: "kitchen123",
 			FullName: "Chef Gordon",
-			Role:     models.StaffRoleKitchen,
+			Role:     "kitchen",
 		},
 	}
 
 	for _, s := range staffMembers {
 		// Check if user already exists
-		existing, _ := repo.GetByUsername(s.Username)
-		if existing != nil {
+		var existing models.Staff
+		if err := db.Where("username = ?", s.Username).First(&existing).Error; err == nil {
 			log.Printf("Staff %s already exists, skipping...", s.Username)
 			continue
 		}
 
 		// Hash password
-		hashedPassword, err := authService.HashPassword(s.Password)
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(s.Password), bcrypt.DefaultCost)
 		if err != nil {
 			return fmt.Errorf("failed to hash password for %s: %w", s.Username, err)
 		}
 
-		staff := &models.Staff{
+		staff := models.Staff{
 			Username:     s.Username,
 			Email:        s.Email,
-			PasswordHash: hashedPassword,
+			PasswordHash: string(hashedPassword),
 			FullName:     s.FullName,
 			Role:         s.Role,
 			IsActive:     true,
 		}
 
-		if err := repo.Create(staff); err != nil {
+		if err := db.Create(&staff).Error; err != nil {
 			return fmt.Errorf("failed to create staff %s: %w", s.Username, err)
 		}
 
@@ -126,7 +126,7 @@ func seedStaff(repo repository.StaffRepository, authService *auth.Service) error
 	return nil
 }
 
-func seedTables(repo repository.TableRepository, qrService *qrcode.Service) error {
+func seedTables(db *gorm.DB, qrService *qrcode.QRService) error {
 	log.Println("Seeding tables...")
 
 	tables := []struct {
@@ -147,8 +147,8 @@ func seedTables(repo repository.TableRepository, qrService *qrcode.Service) erro
 
 	for _, t := range tables {
 		// Check if table already exists
-		existing, _ := repo.GetByTableNumber(t.Number)
-		if existing != nil {
+		var existing models.Table
+		if err := db.Where("table_number = ?", t.Number).First(&existing).Error; err == nil {
 			log.Printf("Table %s already exists, skipping...", t.Number)
 			continue
 		}
@@ -159,14 +159,14 @@ func seedTables(repo repository.TableRepository, qrService *qrcode.Service) erro
 			return fmt.Errorf("failed to generate QR code for table %s: %w", t.Number, err)
 		}
 
-		table := &models.Table{
+		table := models.Table{
 			TableNumber: t.Number,
 			QRCode:      qrCode,
 			Status:      models.TableStatusAvailable,
 			Capacity:    t.Capacity,
 		}
 
-		if err := repo.Create(table); err != nil {
+		if err := db.Create(&table).Error; err != nil {
 			return fmt.Errorf("failed to create table %s: %w", t.Number, err)
 		}
 
@@ -176,7 +176,7 @@ func seedTables(repo repository.TableRepository, qrService *qrcode.Service) erro
 	return nil
 }
 
-func seedMenu(repo repository.MenuRepository) error {
+func seedMenu(db *gorm.DB) error {
 	log.Println("Seeding menu categories and items...")
 
 	// Seed categories
@@ -219,28 +219,22 @@ func seedMenu(repo repository.MenuRepository) error {
 		},
 	}
 
-	categoryIDs := make(map[string]int)
+	categoryIDs := make(map[string]uint)
 
 	for _, c := range categories {
 		// Check if category exists
-		existing, _ := repo.GetCategories(false)
-		found := false
-		for _, e := range existing {
-			if e.Name == c.Name {
-				categoryIDs[c.Name] = e.ID
-				found = true
-				log.Printf("Category %s already exists, skipping...", c.Name)
-				break
-			}
+		var existing models.MenuCategory
+		if err := db.Where("name = ?", c.Name).First(&existing).Error; err == nil {
+			categoryIDs[c.Name] = existing.ID
+			log.Printf("Category %s already exists, skipping...", c.Name)
+			continue
 		}
 
-		if !found {
-			if err := repo.CreateCategory(&c); err != nil {
-				return fmt.Errorf("failed to create category %s: %w", c.Name, err)
-			}
-			categoryIDs[c.Name] = c.ID
-			log.Printf("Created category: %s", c.Name)
+		if err := db.Create(&c).Error; err != nil {
+			return fmt.Errorf("failed to create category %s: %w", c.Name, err)
 		}
+		categoryIDs[c.Name] = c.ID
+		log.Printf("Created category: %s", c.Name)
 	}
 
 	// Seed menu items
@@ -375,35 +369,26 @@ func seedMenu(repo repository.MenuRepository) error {
 		}
 
 		// Check if item already exists
-		items, _ := repo.GetMenuItems(&categoryID, false)
-		found := false
-		for _, i := range items {
-			if i.Name == item.Name {
-				found = true
-				log.Printf("Menu item %s already exists, skipping...", item.Name)
-				break
-			}
+		var existing models.MenuItem
+		if err := db.Where("name = ? AND category_id = ?", item.Name, categoryID).First(&existing).Error; err == nil {
+			log.Printf("Menu item %s already exists, skipping...", item.Name)
+			continue
 		}
 
-		if !found {
-			menuItem := &models.MenuItem{
-				CategoryID:      categoryID,
-				Name:            item.Name,
-				Description:     strPtr(item.Description),
-				Price:           item.Price,
-				IsAvailable:     true,
-				PreparationTime: intToNullInt64(item.PreparationTime),
-			}
-
-			if item.StockQuantity != nil {
-				menuItem.StockQuantity = intToNullInt64(*item.StockQuantity)
-			}
-
-			if err := repo.CreateMenuItem(menuItem); err != nil {
-				return fmt.Errorf("failed to create menu item %s: %w", item.Name, err)
-			}
-			log.Printf("Created menu item: %s (Rp %.0f)", item.Name, item.Price)
+		menuItem := models.MenuItem{
+			CategoryID:      categoryID,
+			Name:            item.Name,
+			Description:     strPtr(item.Description),
+			Price:           item.Price,
+			IsAvailable:     true,
+			PreparationTime: intPtr(item.PreparationTime),
+			StockQuantity:   item.StockQuantity,
 		}
+
+		if err := db.Create(&menuItem).Error; err != nil {
+			return fmt.Errorf("failed to create menu item %s: %w", item.Name, err)
+		}
+		log.Printf("Created menu item: %s (Rp %.0f)", item.Name, item.Price)
 	}
 
 	return nil
@@ -416,11 +401,4 @@ func strPtr(s string) *string {
 
 func intPtr(i int) *int {
 	return &i
-}
-
-func intToNullInt64(i int) sql.NullInt64 {
-	return sql.NullInt64{
-		Int64: int64(i),
-		Valid: true,
-	}
 }

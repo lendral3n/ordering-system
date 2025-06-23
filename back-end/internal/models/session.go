@@ -16,8 +16,8 @@ type CustomerSession struct {
 	StartedAt     time.Time      `gorm:"autoCreateTime" json:"started_at"`
 	EndedAt       *time.Time     `json:"ended_at"`
 	DeletedAt     gorm.DeletedAt `gorm:"index" json:"-"`
-	
+
 	// Relations
 	Table  Table   `gorm:"foreignKey:TableID" json:"table,omitempty"`
-	Orders []Order `json:"orders,omitempty"`
+	Orders []Order `gorm:"foreignKey:SessionID;references:ID" json:"orders,omitempty"`
 }

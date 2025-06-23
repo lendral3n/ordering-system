@@ -10,6 +10,12 @@ import (
 )
 
 func Connect(databaseURL string) (*gorm.DB, error) {
+	if databaseURL[len(databaseURL)-1] != '?' && !containsQueryParams(databaseURL) {
+		databaseURL += "?sslmode=verify-ca&sslrootcert=internal/database/ca.pem"
+	} else {
+		databaseURL += "&sslmode=verify-ca&sslrootcert=internal/database/ca.pem"
+	}
+
 	db, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})
@@ -23,6 +29,7 @@ func Connect(databaseURL string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("failed to get database instance: %w", err)
 	}
 
+
 	// Configure connection pool
 	sqlDB.SetMaxOpenConns(100)
 	sqlDB.SetMaxIdleConns(10)
@@ -34,4 +41,13 @@ func Connect(databaseURL string) (*gorm.DB, error) {
 
 	log.Println("Database connected successfully")
 	return db, nil
+}
+
+func containsQueryParams(url string) bool {
+	for _, c := range url {
+		if c == '?' {
+			return true
+		}
+	}
+	return false
 }

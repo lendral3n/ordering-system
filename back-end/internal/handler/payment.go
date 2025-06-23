@@ -188,9 +188,9 @@ func (h *Handlers) GetPaymentStatus(c *fiber.Ctx) error {
 			payment.MidtransTransactionID = &status.TransactionID
 			payment.PaymentType = &status.PaymentType
 
-			if status.VANumbers != nil && len(status.VANumbers) > 0 {
-				payment.VANumber = &status.VANumbers[0].VANumber
-				payment.Bank = &status.VANumbers[0].Bank
+			if status.VaNumbers != nil && len(status.VaNumbers) > 0 {
+				payment.VANumber = &status.VaNumbers[0].VANumber
+				payment.Bank = &status.VaNumbers[0].Bank
 			}
 
 			h.DB.Save(&payment)

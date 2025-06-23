@@ -16,9 +16,9 @@ type MenuCategory struct {
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`
 	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
-	
+
 	// Relations
-	MenuItems []MenuItem `json:"menu_items,omitempty"`
+	MenuItems []MenuItem `gorm:"foreignKey:CategoryID" json:"menu_items,omitempty"`
 }
 
 // MenuItem model
@@ -37,7 +37,7 @@ type MenuItem struct {
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
 	DeletedAt       gorm.DeletedAt `gorm:"index" json:"-"`
-	
+
 	// Relations
 	Category   MenuCategory `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
 	MediaFiles []MediaFile  `json:"media_files,omitempty"`

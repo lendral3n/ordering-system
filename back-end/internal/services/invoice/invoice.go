@@ -1,4 +1,3 @@
-// internal/services/invoice/generator.go
 package invoice
 
 import (
@@ -6,22 +5,20 @@ import (
 	"fmt"
 	"html/template"
 	"lendral3n/ordering-system/internal/models"
-	"lendral3n/ordering-system/internal/repository"
 	"time"
 
 	"github.com/SebastiaanKlippert/go-wkhtmltopdf"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type Service struct {
-	orderRepo   repository.OrderRepository
-	paymentRepo repository.PaymentRepository
+	db *gorm.DB
 }
 
-func NewService(orderRepo repository.OrderRepository, paymentRepo repository.PaymentRepository) *Service {
+func NewService(db *gorm.DB) *Service {
 	return &Service{
-		orderRepo:   orderRepo,
-		paymentRepo: paymentRepo,
+		db: db,
 	}
 }
 
@@ -44,15 +41,17 @@ type InvoiceItem struct {
 	Total     float64
 }
 
-func (s *Service) GenerateInvoice(orderID int) ([]byte, string, error) {
+func (s *Service) GenerateInvoice(orderID uint) ([]byte, string, error) {
 	// Get order with items
-	order, err := s.orderRepo.GetByID(orderID)
+	var order models.Order
+	err := s.db.Preload("OrderItems.MenuItem").Preload("Table").First(&order, orderID).Error
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to get order: %w", err)
 	}
 	
 	// Get payment
-	payment, err := s.paymentRepo.GetByOrderID(orderID)
+	var payment models.Payment
+	err = s.db.Where("order_id = ?", orderID).First(&payment).Error
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to get payment: %w", err)
 	}
@@ -64,8 +63,8 @@ func (s *Service) GenerateInvoice(orderID int) ([]byte, string, error) {
 	invoiceData := InvoiceData{
 		InvoiceNumber: invoiceNumber,
 		InvoiceDate:   time.Now().Format("02 January 2006"),
-		Order:         order,
-		Payment:       payment,
+		Order:         &order,
+		Payment:       &payment,
 		Items:         make([]InvoiceItem, 0, len(order.OrderItems)),
 		Subtotal:      order.TotalAmount,
 		Tax:           order.TaxAmount,
@@ -130,7 +129,7 @@ func (s *Service) generateHTML(data InvoiceData) (string, error) {
         <div><strong>Date:</strong> {{.InvoiceDate}}</div>
         <div><strong>Order Number:</strong> {{.Order.OrderNumber}}</div>
         <div><strong>Table:</strong> {{.Order.Table.TableNumber}}</div>
-        <div><strong>Payment Method:</strong> {{.Payment.PaymentType}}</div>
+        <div><strong>Payment Method:</strong> {{if .Payment.PaymentType}}{{.Payment.PaymentType}}{{else}}N/A{{end}}</div>
     </div>
     
     <table>

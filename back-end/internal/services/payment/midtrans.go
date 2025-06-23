@@ -99,13 +99,14 @@ func (s *MidtransService) CreateTransaction(req CreateTransactionRequest) (*Tran
 	}
 
 	// Create transaction request
+	// Fix: Use correct field name 'Items' instead of 'ItemDetails'
 	snapReq := &snap.Request{
 		TransactionDetails: midtrans.TransactionDetails{
 			OrderID:  req.Order.OrderNumber,
 			GrossAmt: int64(req.Order.GrandTotal),
 		},
-		ItemDetails:     &items,
-		CustomerDetail:  custDetail,
+		Items:          &items,
+		CustomerDetail: custDetail,
 		EnabledPayments: s.getEnabledPayments(),
 		Expiry: &snap.ExpiryDetails{
 			Duration: 1,
@@ -158,11 +159,12 @@ func (s *MidtransService) ParseNotification(payload []byte) (*NotificationPayloa
 }
 
 func (s *MidtransService) getEnabledPayments() []snap.SnapPaymentType {
+	// Fix: Remove undefined payment types
 	return []snap.SnapPaymentType{
 		snap.PaymentTypeBankTransfer,
 		snap.PaymentTypeCreditCard,
 		snap.PaymentTypeGopay,
-		snap.PaymentTypeQris,
+		// snap.PaymentTypeQris is not available in the current version
 		snap.PaymentTypeShopeepay,
 		snap.PaymentTypeBCAKlikpay,
 		snap.PaymentTypeAlfamart,

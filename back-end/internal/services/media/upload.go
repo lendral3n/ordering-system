@@ -9,6 +9,7 @@ import (
 
 	"github.com/cloudinary/cloudinary-go/v2"
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
+	"github.com/cloudinary/cloudinary-go/v2/api/admin"
 )
 
 type CloudinaryService struct {
@@ -67,8 +68,9 @@ func (s *CloudinaryService) UploadFile(ctx context.Context, file multipart.File,
 	
 	// Generate thumbnail URL for images
 	thumbnailURL := ""
-	if resourceType == "image" {
-		thumbnailURL, _ = s.cld.Image(result.PublicID).Transform("w_200,h_200,c_fill,g_auto").URL()
+	if resourceType == "image" && result.PublicID != "" {
+		// Create thumbnail URL by modifying the secure URL
+		thumbnailURL = s.generateTransformedURL(result.SecureURL, "w_200,h_200,c_fill,g_auto")
 	}
 	
 	return &UploadResult{
@@ -96,9 +98,33 @@ func (s *CloudinaryService) DeleteFile(ctx context.Context, publicID string) err
 }
 
 func (s *CloudinaryService) Generate360URL(publicID string) string {
-	// For 360 images, we can add special transformations
-	url, _ := s.cld.Image(publicID).Transform("w_1024,h_512,c_limit,q_auto").URL()
-	return url
+	// For 360 images, we need to get the asset first
+	ctx := context.Background()
+	asset, err := s.cld.Admin.Asset(ctx, admin.AssetParams{
+		PublicID: publicID,
+	})
+	
+	if err != nil || asset == nil {
+		return ""
+	}
+	
+	// Generate transformed URL
+	return s.generateTransformedURL(asset.SecureURL, "w_1024,h_512,c_limit,q_auto")
+}
+
+// Helper function to generate transformed URLs
+func (s *CloudinaryService) generateTransformedURL(originalURL string, transformation string) string {
+	// Cloudinary URL format: https://res.cloudinary.com/{cloud_name}/{resource_type}/upload/{transformations}/{version}/{public_id}.{format}
+	// We need to insert the transformation after "upload/"
+	
+	parts := strings.Split(originalURL, "/upload/")
+	if len(parts) != 2 {
+		return originalURL
+	}
+	
+	// Insert transformation
+	transformedURL := parts[0] + "/upload/" + transformation + "/" + parts[1]
+	return transformedURL
 }
 
 // Helper functions

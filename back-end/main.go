@@ -37,20 +37,28 @@ func main() {
 		log.Fatal("Failed to connect to database:", err)
 	}
 
-	// Auto migrate
-	if err := db.AutoMigrate(
+	// Auto migrate - Migration order matters for foreign keys
+	migrationModels := []interface{}{
 		&models.Table{},
+		&models.Staff{},
+		// Menu related - category first, then items
 		&models.MenuCategory{},
 		&models.MenuItem{},
+		// Session and orders
 		&models.CustomerSession{},
 		&models.Order{},
 		&models.OrderItem{},
+		// Others
 		&models.Payment{},
 		&models.MediaFile{},
 		&models.Notification{},
 		&models.InventoryLog{},
-	); err != nil {
-		log.Fatal("Failed to migrate database:", err)
+	}
+
+	for _, model := range migrationModels {
+		if err := db.AutoMigrate(model); err != nil {
+			log.Fatalf("Failed to migrate %T: %v", model, err)
+		}
 	}
 
 	// Initialize services

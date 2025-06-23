@@ -23,9 +23,9 @@ type Order struct {
 	CreatedAt     time.Time      `json:"created_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`
 	DeletedAt     gorm.DeletedAt `gorm:"index" json:"-"`
-	
+
 	// Relations
-	Session         CustomerSession `gorm:"foreignKey:SessionID" json:"session,omitempty"`
+	CustomerSession CustomerSession `gorm:"foreignKey:SessionID;references:ID" json:"customer_session,omitempty"`
 	Table           Table           `gorm:"foreignKey:TableID" json:"table,omitempty"`
 	OrderItems      []OrderItem     `json:"order_items,omitempty"`
 	Payment         *Payment        `json:"payment,omitempty"`
@@ -44,7 +44,7 @@ type OrderItem struct {
 	CreatedAt  time.Time      `json:"created_at"`
 	UpdatedAt  time.Time      `json:"updated_at"`
 	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
-	
+
 	// Relations
 	Order    Order    `gorm:"foreignKey:OrderID" json:"-"`
 	MenuItem MenuItem `gorm:"foreignKey:MenuItemID" json:"menu_item,omitempty"`
